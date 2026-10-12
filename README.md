@@ -59,12 +59,12 @@
 ## 源代码编译
 
 ```shell
-# 克隆项目
 git clone https://github.com/OpenHUTB/hutb.git
-# 启动编辑器
+# 启动编辑器(-l)、打包（-p）
+# Windows
 setup.bat -l
-# 打包
-setup.bat -p
+# Ubuntu
+# setup.sh -l
 ```
 请注意，hutb分支包含最新版本以及最新的修复程序和功能。
 或者按照 [如何在Windows上构建中文说明](https://openhutb.github.io/doc/build_windows/) 、[如何在Linux上构建](https://openhutb.github.io/doc/build_linux/) 中的说明进行操作。
