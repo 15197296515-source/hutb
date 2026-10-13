@@ -5,8 +5,11 @@
 # hutb_downloader.exe -r lfs_demo
 # 3. 添加不删除.git记录的选项(--skipp, -s)
 #
-# 打包方法： 
+# 打包方法：
+# Windows 
 # Pyinstaller download_from_git.py --onefile --name hutb_downloader -i hutb_log.ico
+# Ubuntu (fix: Pyinstaller: command not found)
+# python -m PyInstaller download_from_git.py --onefile --name hutb_downloader -i hutb_log.ico
 # 
 # 
 # 从git下载发行版
@@ -153,6 +156,7 @@ else:
         
 print("Using git executable: ", git_exe)
 os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = git_exe
+
 
 # 必须在设置GIT_PYTHON_GIT_EXECUTABLE环境变量之后，才能导入git库，否则git库会使用系统环境变量中默认的git路径，导致找不到git可执行文件的问题
 from git.repo import Repo  # On Linux: Git (1.7.x or newer)
