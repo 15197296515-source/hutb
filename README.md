@@ -36,11 +36,14 @@
 
 
 ## 使用示例
-1. 在终端运行以下命令下载模拟器：
+1. 在终端运行下面命令下载模拟器：
 	```shell
+	# Windows 系统的下载命令，运行 CarlaUE4.exe 启动模拟器
 	curl -fsSL -o dl.bat https://openhutb.github.io/dl.bat && dl.bat
+
+	# Ubuntu 系统的下载命令，运行 CarlaUE4.sh 启动模拟器
+	curl -fsSL -o dl.sh https://openhutb.github.io/dl.sh && chmod +x dl.sh && ./dl.sh
 	```
-	双击执行`CarlaUE4.exe`启动模拟器。
 
 2. 进入生成的目录`hutb/PythonAPI/carla/dist/`，使用`pip install hutb-*.whl`安装特定 Python 版本的工具包（支持Python 3.7-3.14），运行以下脚本在场景中 [生成车辆和行人](https://github.com/OpenHUTB/doc/blob/master/src/examples/generate_traffic.py) ：
 	```shell
