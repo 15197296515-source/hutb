@@ -481,19 +481,19 @@ if __name__ == "__main__":
             print("Removing previous release directory: ", rep_path)
             shutil.rmtree(rep_path, onerror=remove_readonly)
         repo = GitRepository(rep_path, remote_path)
-        # 寻找 local_path 目录下修改日期最新的 .zip 文件
+        # 寻找 local_path 目录下修改日期最新的发行版压缩包（.zip 或 .tar.gz）
         latest_file = None
         latest_file_name = None
         latest_time = 0
         for file_name in os.listdir(local_path):
-            if file_name.endswith(".zip"):
+            if file_name.endswith((".zip", ".tar.gz")):
                 file_path = os.path.join(local_path, file_name)
                 file_time = os.path.getmtime(file_path)
                 if file_time > latest_time:
                     latest_time = file_time
                     latest_file = file_path
                     latest_file_name = file_name
-        print("Latest zip file to upload: ", latest_file)
+        print("Latest package file to upload: ", latest_file)
         # 如果提交的记录数超过2，则重置仓库到最新状态，避免提交记录过多
         if len(repo.commits()) > 2:
             repo.reset_hard()
@@ -504,26 +504,24 @@ if __name__ == "__main__":
                 file_path = os.path.join(rep_path, file_name)
                 print("Removing file: ", file_path)
                 os.remove(file_path)
-        # 将最新的 .zip 重命名为 hutb.zip，并切分成多个 .dat 小文件，上传到 git 仓库中
-        # Build/UE4Carla下没有.zip文件需要判断一下，避免报错
+        # 将最新的压缩包统一重命名，并切分成多个 .dat 小文件，上传到 git 仓库中
+        # Build/UE4Carla下没有压缩包需要判断一下，避免报错
         if latest_file is None:
-            print("No zip file found in local path: ", local_path)
+            print("No .zip / .tar.gz file found in local path: ", local_path)
             sys.exit(1)
-        if os.path.exists(os.path.join(local_path, latest_file)):
-            # 如果 hutb.zip 已经存在，则先删除
-            if os.path.exists(os.path.join(local_path, "hutb.zip"))  and latest_file != "hutb.zip":
-                print("Removing existing hutb.zip file: ", os.path.join(local_path, "hutb.zip"))
-                os.remove(os.path.join(local_path, "hutb.zip"))
-            # 如果 latest_file 不是 hutb.zip，则重命名为 hutb.zip
-            if latest_file != "hutb.zip":
-                os.rename(
-                    os.path.join(local_path, latest_file),
-                    os.path.join(local_path, "hutb.zip"),
-                )
-        if os.path.exists(os.path.join(rep_path, "*.dat")) is False:
-            split_file(
-                os.path.join(local_path, "hutb.zip"), rep_path, 5120 * 1024 * 1024
-            )  # 每个小文件最大为 128MB
+
+        # 重命名时保持扩展名与压缩格式一致，下载端通过文件头识别格式
+        archive_name = (
+            "hutb.tar.gz" if latest_file_name.endswith(".tar.gz") else "hutb.zip"
+        )
+        archive_path = os.path.join(local_path, archive_name)
+        # 如果上一次上传留下的同名压缩包还在，则先删除
+        if os.path.exists(archive_path) and latest_file != archive_path:
+            print("Removing existing archive file: ", archive_path)
+            os.remove(archive_path)
+        if latest_file != archive_path:
+            os.rename(latest_file, archive_path)
+        split_file(archive_path, rep_path, 5120 * 1024 * 1024)  # 每个小文件最大为 5GB
         # repo.commit_push_force(message=latest_file_name)
         
         # ---------- 修复 504 超时：增量分批推送逻辑开始 ----------
@@ -562,6 +560,10 @@ if __name__ == "__main__":
                     # 遇到网络彻底断开等致命异常时，优雅地中止程序
                     sys.exit(1)
         # ---------- 增量分批推送逻辑结束 ----------
+
+        # 全部推成功后删除本地上传工作目录（源包保留），下次上传会自动重新克隆
+        print("Removing upload working directory: ", rep_path)
+        shutil.rmtree(rep_path, onerror=remove_readonly)
 
         print("Upload finished.")
         sys.exit(0)
@@ -612,8 +614,21 @@ if __name__ == "__main__":
     if args.repository == "release":
         # 合并小文件
         print("Merge small files...")
-        if os.path.exists(os.path.join(local_path, "hutb.zip")) is False:
-            merge_files(local_path, os.path.join(local_path, "hutb.zip"))
+        hutb_zip = os.path.join(local_path, "hutb.zip")
+        hutb_targz = os.path.join(local_path, "hutb.tar.gz")
+        if not (os.path.exists(hutb_zip) or os.path.exists(hutb_targz)):
+            # 先合并成临时文件，再按文件头判断实际压缩格式，重命名为对应的后缀
+            merged_file = os.path.join(local_path, "hutb.tmp")
+            merge_files(local_path, merged_file)
+            with open(merged_file, "rb") as f:
+                header = f.read(4)
+            if header[:2] == b"PK":  # zip：PK\x03\x04（空 zip 为 PK\x05\x06）
+                os.rename(merged_file, hutb_zip)
+            elif header[:2] == b"\x1f\x8b":  # gzip 压缩的 tar.gz
+                os.rename(merged_file, hutb_targz)
+            else:
+                print("Unknown archive format, file header: %r" % header)
+                sys.exit(1)
 
         # 先于解压删除后缀名为.dat的小文件，防止整个过程占用过多的磁盘空间
         dat_files = [f for f in os.listdir(local_path) if f.endswith(".dat")]
@@ -625,21 +640,19 @@ if __name__ == "__main__":
                 os.remove(os.path.join(local_path, file_name))
             print()  # 换行
 
-        print("Unzipping hutb.zip...")
-        f = zipfile.ZipFile(os.path.join(local_path, "hutb.zip"), "r")  # 压缩文件位置
-        file_list = f.namelist()
-        total_files = len(file_list)
-        for idx, file in enumerate(file_list, 1):
-            show_progress_bar(idx, total_files)
-            f.extract(file, local_path)  # 解压位置
-        f.close()
-        print()  # 换行
-
-        # 赋予 Ubuntu 下二进制文件的执行权限
-        if IS_LINUX:
-            carla_sh = os.path.join(local_path, 'CarlaUE4.sh')
-            if os.path.exists(carla_sh):
-                os.chmod(carla_sh, os.stat(carla_sh).st_mode | stat.S_IEXEC)
+        if os.path.exists(hutb_zip):
+            print("Unzipping hutb.zip...")
+            f = zipfile.ZipFile(hutb_zip, "r")  # 压缩文件位置
+            file_list = f.namelist()
+            total_files = len(file_list)
+            for idx, file in enumerate(file_list, 1):
+                show_progress_bar(idx, total_files)
+                f.extract(file, local_path)  # 解压位置
+            f.close()
+            print()  # 换行
+        elif os.path.exists(hutb_targz):
+            print("Extracting hutb.tar.gz...")
+            untar(hutb_targz, local_path)
 
         # if os.path.exists(os.path.join(local_path, "hutb.zip")):
         #     print("Remove hutb.zip...")
